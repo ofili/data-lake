@@ -2,9 +2,9 @@
 # Project - Data Lake
 ---
 
-A music streaming startup, Sparkify, has grown their user base and song database even more and want to move their data warehouse to a data lake. Their data resides in S3, in a directory of JSON logs on user activity on the app, as well as a directory with JSON metadata on the songs in their app.
+The music streaming startup, Sparkify, has grown their user base and song database and want to move their data warehouse to a data lake. Their data resides in S3, in a directory of JSON logs on user activity on the app, as well as a directory with JSON metadata on the songs in their app.
 
-In this project, we will build an ETL pipeline for a data lake hosted on S3. We will load data from S3, process the data into analytics tables using Spark, and load them back into S3. We will deploy this Spark process on a cluster using AWS.
+This project, builds an ETL pipeline for a data lake hosted on S3. We will load data from S3, process the data into analytics tables using Spark, and load them back into S3. We will deploy this Spark process on a cluster using AWS.
 
 ## Deployement
 
@@ -19,9 +19,7 @@ SECRET=YOUR_AWS_SECRET_KEY
 If you are using local as your development environemnt - Moving project directory from local to EMR 
 
 
- 
-
-     scp -i <.pem-file> <Local-Path> <username>@<EMR-MasterNode-Endpoint>:~<EMR-path>
+    scp -i <.pem-file> <Local-Path> <username>@<EMR-MasterNode-Endpoint>:~<EMR-path>
 
 Running spark job (Before running job make sure EMR Role have access to s3)
 
@@ -41,21 +39,21 @@ Running spark job (Before running job make sure EMR Role have access to s3)
     Transforms them to create five different tables listed below : 
     #### Fact Table
 	 **songplays**  - records in log data associated with song plays i.e. records with page  `NextSong`
-    -   _songplay_id, start_time, user_id, level, song_id, artist_id, session_id, location, user_agent_
+    Columns: `songplay_id`, `start_time`, `user_id`, `level`, `song_id`, `artist_id`, `session_id`, `location`, `user_agent`
 
 	#### Dimension Tables
-	 **users**  - users in the app
-		Fields -   _user_id, first_name, last_name, gender, level_
+	**users**  - users in the app
+	Columns:   `user_id`, `first_name`, `last_name`, `gender`, `level`
 		
-	 **songs**  - songs in music database
-    Fields - _song_id, title, artist_id, year, duration_
+	**songs**  - songs in music database
+    Columns: `song_id`, `title`, `artist_id`, `year`, `duration`
     
 	**artists**  - artists in music database
-    Fields -   _artist_id, name, location, lattitude, longitude_
+    Columns: `artist_id`, `name`, `location`, `lattitude`, `longitude`
     
-	  **time**  - timestamps of records in  **songplays**  broken down into specific units
-    Fields -   _start_time, hour, day, week, month, year, weekday_
+	**time**  - timestamps of records in  **songplays**  broken down into specific units
+    Columns: `start_time`, `hour`, `day`, `week`, `month`, `year`, `weekday`
     
 4.  Load it back to S3
     
-    Writes them to partitioned parquet files in table directories on S3.
+    Write the data to partitioned parquet files in table directories on S3.
