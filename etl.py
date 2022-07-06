@@ -6,16 +6,19 @@ import findspark
 
 findspark.init()
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf, col
+from pyspark.sql.functions import udf, col, monotonically_increasing_id
 from pyspark.sql.functions import year, month, dayofmonth, hour, weekofyear, date_format
 from pyspark.sql.types import TimestampType
 
 # environment variables
-config = configparser.ConfigParser()
+''' config = configparser.ConfigParser()
 config.read('/dl.cfg')
 
 os.environ['AWS_ACCESS_KEY_ID'] = config.get('AWS', 'AWS_ACCESS_KEY_ID') # AWS access key id from ['AWS_ACCESS_KEY_ID']
-os.environ['AWS_SECRET_ACCESS_KEY'] = config.get('AWS', 'AWS_SECRET_ACCESS_KEY') # AWS secret access key from ['AWS_SECRET_ACCESS_KEY']
+os.environ['AWS_SECRET_ACCESS_KEY'] = config.get('AWS', 'AWS_SECRET_ACCESS_KEY') # AWS secret access key from ['AWS_SECRET_ACCESS_KEY'] '''
+
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')  # AWS access key id from ['AWS_ACCESS_KEY_ID']
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')  # AWS secret access key from ['AWS_SECRET_ACCESS_KEY']
 
 # Setting up logger
 logging.config.fileConfig("logger.conf")
@@ -35,17 +38,17 @@ def create_spark_session():
 def process_song_data(spark, input_data, output_data):
     """
     Description:
-        Process the songs data files and create extract songs table and artist table data from it.
+        Process the songs' data files and create extract songs table and artist table data from it.
 
     :param spark: a spark session instance
     :param input_data: input file path
-    :param
+    :param output_data: output file path
     """
-    # get filepath to song data file
-    song_data = input_data + "song-data/*/*/*/*.json"
+    # get filepath to song data file from subdirectory songs_data
+    song_data = input_data + "song_data/*/*/*/*"
 
     # read song data file
-    df = spark.read.json(song_data, mode='PERMISSIVE', columnNameOfCorruptRecord='corrupt_record').drop_duplicates()
+    df = spark.read.json(song_data) #, mode='PERMISSIVE', columnNameOfCorruptRecord='corrupt_record').drop_duplicates()
 
     # extract columns to create songs table
     songs_table = df.select('song_id, title, artist_id, year, duration').drop_duplicates()
@@ -73,10 +76,11 @@ def process_log_data(spark, input_data, output_data):
     :param output_data: output file path
     """
     # get filepath to log data file
-    log_data = os.path.join(input_data, "log-data/")
+    log_data = input_data + 'log_data/*/*/*.json'
 
     # read log data file
-    df = spark.read.json(log_data, mode='PERMISSIVE', columnNameOfCorruptRecord='corrupt_record').drop_duplicates()
+    # df = spark.read.json(log_data, mode='PERMISSIVE', columnNameOfCorruptRecord='corrupt_record').drop_duplicates()
+    df = spark.read.json(log_data).drop_duplicates()
 
     # filter by actions for song plays
     df = df.filter(df.page == 'NextSong')
@@ -96,12 +100,12 @@ def process_log_data(spark, input_data, output_data):
     ''' get_datetime = udf()
     df =  '''
 
-    # extract columns to create time table
+    # extract columns to create timetable
     time_table = df.withColumn('hour', hour(df.timestamp)).withColumn('day', dayofmonth(df.timestamp)).withColumn(
         'week', weekofyear(df.timestamp)).withColumn('month', month(df.timestamp)).withColumn('year', year(
         df.timestamp)).withColumn('weekday', date_format(df.timestamp, 'E')).drop_duplicates()
 
-    # write time table to parquet files partitioned by year and month
+    # write timetable to parquet files partitioned by year and month
     time_table.write.partitionBy('year', 'month').parquet(output_data, "time_table/", mode='overwrite')
 
     # read in song data to use for songplays table
@@ -109,12 +113,14 @@ def process_log_data(spark, input_data, output_data):
         output_data + "songs/*/*/*.parquet")
 
     # extract columns from joined song and log datasets to create songplays table 
-    songplays_table = df.join(song_df, df.song == song_df.title, how='inner').withColumn('songplay_id',
-                                                                                         monetdb.monetdb.rowid()).select(
-        monetdb.monetdb.rowid(), col('ts').alias('start_time'), col('userId').alias('user_id'),
-        col('level').alias('level'), col('song_id').alias('song_id'), col('artist_id').alias('artist_id'),
-        col('sessionId').alias('session_id'), col('location').alias('location'),
-        col('userAgent').alias('user_agent')).drop_duplicates()
+    songplays_table = df.join(song_df, df.song == song_df.title, how='inner') \
+        .select(monotonically_increasing_id().alias("songplay_id"), col("start_time"), col("userId").alias("user_id"),
+                "level", "song_id", "artist_id", col("sessionId").alias("session_id"), "location",
+                col("userAgent").alias("user_agent"))
+
+    songplays_table = songplays_table.join(time_table, songplays_table.start_time == time_table.start_time, how="inner") \
+        .select("songplay_id", songplays_table.start_time, "user_id", "level", "song_id", "artist_id", "session_id",
+                "location", "user_agent", "year", "month")
 
     # write songplays table to parquet files partitioned by year and month
     songplays_table.drop_duplicates().write.partitionBy('year', 'month').parquet(
@@ -124,8 +130,10 @@ def process_log_data(spark, input_data, output_data):
 
 def main():
     spark = create_spark_session()
-    input_data = "s3a://udacity-dend/"
-    output_data = "s3a://udacity-dend-output/"
+    # input_data = "s3a://udacity-dend/"
+    # output_data = "s3a://udacity-dend-output/"
+    input_data = "data/"
+    output_data = "data/output/"
 
     logger.info("Starting ETL process")
     logger.info("-" * 50)

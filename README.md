@@ -46,17 +46,20 @@ Running spark job (Before running job make sure EMR Role have access to s3)
 	**users**  - users in the app
 
 	Columns:   `user_id`, `first_name`, `last_name`, `gender`, `level`
-		
+
+	
 	**songs**  - songs in music database
 
     Columns: `song_id`, `title`, `artist_id`, `year`, `duration`
+
     
 	**artists**  - artists in music database
 
     Columns: `artist_id`, `name`, `location`, `lattitude`, `longitude`
+
     
 	**time**  - timestamps of records in  **songplays**  broken down into specific units
-    
+
     Columns: `start_time`, `hour`, `day`, `week`, `month`, `year`, `weekday`
     
 4.  Load it back to S3
