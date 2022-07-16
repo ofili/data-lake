@@ -1,24 +1,20 @@
-import configparser
 import logging.config
-from datetime import datetime
+import configparser
 import os
-import findspark
+from datetime import datetime
 
-findspark.init()
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import udf, col, monotonically_increasing_id
 from pyspark.sql.functions import year, month, dayofmonth, hour, weekofyear, date_format
 from pyspark.sql.types import TimestampType
 
 # environment variables
-''' config = configparser.ConfigParser()
-config.read('/dl.cfg')
+config = configparser.ConfigParser()
+config.read('dl.cfg')
 
 os.environ['AWS_ACCESS_KEY_ID'] = config.get('AWS', 'AWS_ACCESS_KEY_ID') # AWS access key id from ['AWS_ACCESS_KEY_ID']
-os.environ['AWS_SECRET_ACCESS_KEY'] = config.get('AWS', 'AWS_SECRET_ACCESS_KEY') # AWS secret access key from ['AWS_SECRET_ACCESS_KEY'] '''
+os.environ['AWS_SECRET_ACCESS_KEY'] = config.get('AWS', 'AWS_SECRET_ACCESS_KEY') # AWS secret access key from ['AWS_SECRET_ACCESS_KEY'] 
 
-AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')  # AWS access key id from ['AWS_ACCESS_KEY_ID']
-AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')  # AWS secret access key from ['AWS_SECRET_ACCESS_KEY']
 
 # Setting up logger
 logging.config.fileConfig("logger.conf")
@@ -26,8 +22,25 @@ logger = logging.getLogger(__name__)
 
 
 def create_spark_session():
+    """
+    Description: Creates spark session.
+
+    Returns:
+        spark session object
+    """
+    
     try:
+        AWS_ACCESS_KEY_ID = os.environ['AWS_ACCESS_KEY_ID']
+        AWS_SECRET_ACCESS_KEY = os.environ['AWS_SECRET_ACCESS_KEY']
+
         spark = SparkSession.builder.config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:2.7.0").getOrCreate()
+
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.access.key", AWS_ACCESS_KEY_ID)
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.secret.key", AWS_SECRET_ACCESS_KEY)
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3n.awsAccessKeyId", AWS_ACCESS_KEY_ID)
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3n.awsSecretAccessKey", AWS_SECRET_ACCESS_KEY)
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.endpoint", "s3.amazonaws.com")
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3n.endpoint", "s3.amazonaws.com")
         logger.info("Spark session created")
         return spark
     except Exception as e:
@@ -44,14 +57,16 @@ def process_song_data(spark, input_data, output_data):
     :param input_data: input file path
     :param output_data: output file path
     """
+    
     # get filepath to song data file from subdirectory songs_data
-    song_data = input_data + "song_data/*/*/*/*"
+    song_data = os.path.join(input_data, "song_data/*/*/*/*.json")
 
     # read song data file
-    df = spark.read.json(song_data) #, mode='PERMISSIVE', columnNameOfCorruptRecord='corrupt_record').drop_duplicates()
+    df = spark.read.json(song_data, mode='PERMISSIVE', columnNameOfCorruptRecord='corrupt_record').drop_duplicates()
+    #df = spark.read.load(os.path.join(input_data, "song_data/*/*/*/*.json"), format="json").drop_duplicate()
 
     # extract columns to create songs table
-    songs_table = df.select('song_id, title, artist_id, year, duration').drop_duplicates()
+    songs_table = df.select("song_id","title","artist_id","year","duration").drop_duplicates()
 
     # write songs table to parquet files partitioned by year and artist
     songs_table.write.partitionBy('year', 'artist_id').parquet(output_data + 'songs/', mode='overwrite')
@@ -75,18 +90,18 @@ def process_log_data(spark, input_data, output_data):
     :param input_data: input file path
     :param output_data: output file path
     """
+    
     # get filepath to log data file
-    log_data = input_data + 'log_data/*/*/*.json'
+    log_data = os.path.join(input_data, 'log_data/*/*/*.json')
 
     # read log data file
-    # df = spark.read.json(log_data, mode='PERMISSIVE', columnNameOfCorruptRecord='corrupt_record').drop_duplicates()
-    df = spark.read.json(log_data).drop_duplicates()
+    df = spark.read.json(log_data, mode='PERMISSIVE', columnNameOfCorruptRecord='corrupt_record').drop_duplicates()
 
     # filter by actions for song plays
     df = df.filter(df.page == 'NextSong')
 
     # extract columns for users table    
-    users_table = df.select('userId', 'firstName', 'lastName', 'gender', 'leve').drop_duplicates()
+    users_table = df.select('user_id', 'first_name', 'last_name', 'gender', 'level').drop_duplicates()
 
     # write users table to parquet files
     users_table.write.parquet(os.path.join(output_data, "users/"), mode='overwrite')
@@ -97,8 +112,8 @@ def process_log_data(spark, input_data, output_data):
     df = df.withColumn('timestamp', get_timestamp(df.ts))
 
     # create datetime column from original timestamp column
-    ''' get_datetime = udf()
-    df =  '''
+    get_datetime = udf(lambda x: datetime.fromtimestamp(x / 1000.0), TimestampType())
+    df = df.withColumn('datetime', get_datetime(df.ts))
 
     # extract columns to create timetable
     time_table = df.withColumn('hour', hour(df.timestamp)).withColumn('day', dayofmonth(df.timestamp)).withColumn(
@@ -110,7 +125,7 @@ def process_log_data(spark, input_data, output_data):
 
     # read in song data to use for songplays table
     song_df = spark.read.format("parquet").options(path=output_data + "songs/").load(
-        output_data + "songs/*/*/*.parquet")
+        os.path.join(output_data, "songs/*/*/*.parquet"))
 
     # extract columns from joined song and log datasets to create songplays table 
     songplays_table = df.join(song_df, df.song == song_df.title, how='inner') \
@@ -130,10 +145,10 @@ def process_log_data(spark, input_data, output_data):
 
 def main():
     spark = create_spark_session()
-    # input_data = "s3a://udacity-dend/"
-    # output_data = "s3a://udacity-dend-output/"
-    input_data = "data/"
-    output_data = "data/output/"
+    input_data = "s3a://udacity-dend/"
+    output_data = "s3a://udacity-dend-output/"
+    # input_data = "data/"
+    # output_data = "data/output/"
 
     logger.info("Starting ETL process")
     logger.info("-" * 50)
